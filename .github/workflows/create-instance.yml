@@ -146,10 +146,14 @@ jobs:
           git push
 
       - name: Send Discord notification (Success)
-        if: steps.create.outputs.result == 'success' && secrets.DISCORD_WEBHOOK_URL != ''
+        if: steps.create.outputs.result == 'success'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "Discord Webhook URLが設定されていないためスキップ"
+            exit 0
+          fi
           INSTANCE_INFO=""
           if [ -f /tmp/instance_info.json ]; then
             INSTANCE_ID=$(cat /tmp/instance_info.json | jq -r '.data.id // "N/A"')
@@ -170,10 +174,14 @@ jobs:
             "$DISCORD_WEBHOOK_URL"
 
       - name: Send Slack notification (Success)
-        if: steps.create.outputs.result == 'success' && secrets.SLACK_WEBHOOK_URL != ''
+        if: steps.create.outputs.result == 'success'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "Slack Webhook URLが設定されていないためスキップ"
+            exit 0
+          fi
           curl -X POST -H 'Content-type: application/json' \
             --data '{
               "text": "Oracle Cloud インスタンス作成成功",
@@ -213,17 +221,21 @@ jobs:
           echo "次回実行予定: 約30分後"
 
       - name: Send Discord notification (Out of capacity)
-        if: steps.create.outputs.result == 'out_of_capacity' && secrets.DISCORD_WEBHOOK_URL != '' && github.event_name == 'workflow_dispatch'
+        if: steps.create.outputs.result == 'out_of_capacity' && github.event_name == 'workflow_dispatch'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "Discord Webhook URLが設定されていないためスキップ"
+            exit 0
+          fi
           curl -H "Content-Type: application/json" \
             -d "{
               \"embeds\": [{
                 \"title\": \"Oracle Cloud インスタンス作成待機中\",
                 \"description\": \"キャパシティ不足のため待機中です。30分後に再試行します。\",
                 \"color\": 16776960,
-                \"timestamp\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ\")\"
+                \"timestamp\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"
               }]
             }" \
             "$DISCORD_WEBHOOK_URL"
