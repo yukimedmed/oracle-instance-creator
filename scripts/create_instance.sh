@@ -37,7 +37,8 @@ SSH_PUBLIC_KEY="${OCI_SSH_PUBLIC_KEY:-}"
 # ===== イメージ自動取得関数 =====
 
 get_latest_arm_image() {
-    log_info "ARM用イメージを自動検索中..."
+    # 注意: この関数は echo で結果を返すため、log_info は使わない（stdoutに混入するため）
+    echo "ARM用イメージを自動検索中..." >&2
 
     # Oracle Linux 9 ARM イメージを検索
     local image_id
