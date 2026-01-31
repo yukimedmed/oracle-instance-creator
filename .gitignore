@@ -1,0 +1,91 @@
+# ===== Oracle Cloud 関連 =====
+
+# APIキー（絶対にコミットしない）
+*.pem
+*.key
+oci_api_key*
+private_key*
+
+# OCI CLI設定ファイル
+.oci/
+
+# ===== 機密情報 =====
+
+# 環境変数ファイル
+.env
+.env.*
+*.env
+
+# 設定ファイル（実際の値が入ったもの）
+config/secrets.json
+config/credentials.json
+config/local-*.json
+
+# ===== 一時ファイル =====
+
+# ログファイル
+*.log
+logs/
+
+# 一時ファイル
+tmp/
+temp/
+*.tmp
+
+# ===== OS生成ファイル =====
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+.directory
+
+# ===== IDE/エディタ =====
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
+*.swp
+*.swo
+*.swn
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+.elc
+
+# ===== その他 =====
+
+# Node.js（もし使う場合）
+node_modules/
+npm-debug.log
+
+# Python（もし使う場合）
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# バックアップファイル
+*.bak
+*.backup

@@ -1,0 +1,118 @@
+{
+  "_comment": "Oracle Cloud インスタンス設定テンプレート（参考用）",
+  "_note": "実際の値はGitHub Secretsで設定してください",
+
+  "instance_sizes": {
+    "MAX": {
+      "description": "最大スペック（確保しにくい）",
+      "ocpus": 4,
+      "memory_gb": 24,
+      "boot_volume_gb": 200
+    },
+    "MID": {
+      "description": "中間スペック（バランス型）",
+      "ocpus": 2,
+      "memory_gb": 12,
+      "boot_volume_gb": 100
+    },
+    "MIN": {
+      "description": "最小スペック（確保しやすい）",
+      "ocpus": 1,
+      "memory_gb": 6,
+      "boot_volume_gb": 50
+    }
+  },
+
+  "shape": "VM.Standard.A1.Flex",
+
+  "recommended_images": {
+    "ubuntu_24_04": {
+      "description": "Ubuntu 24.04 LTS (Canonical)",
+      "regions": {
+        "ap-tokyo-1": "ocid1.image.oc1.ap-tokyo-1.xxxxx",
+        "ap-osaka-1": "ocid1.image.oc1.ap-osaka-1.xxxxx",
+        "ap-seoul-1": "ocid1.image.oc1.ap-seoul-1.xxxxx"
+      }
+    },
+    "oracle_linux_9": {
+      "description": "Oracle Linux 9",
+      "regions": {
+        "ap-tokyo-1": "ocid1.image.oc1.ap-tokyo-1.xxxxx",
+        "ap-osaka-1": "ocid1.image.oc1.ap-osaka-1.xxxxx",
+        "ap-seoul-1": "ocid1.image.oc1.ap-seoul-1.xxxxx"
+      }
+    }
+  },
+
+  "availability_domains": {
+    "_comment": "利用可能な可用性ドメインはリージョンによって異なります",
+    "examples": [
+      "xxxx:AP-TOKYO-1-AD-1",
+      "xxxx:AP-OSAKA-1-AD-1",
+      "xxxx:AP-SEOUL-1-AD-1"
+    ]
+  },
+
+  "github_secrets_required": [
+    {
+      "name": "OCI_USER_OCID",
+      "description": "ユーザーOCID",
+      "example": "ocid1.user.oc1..xxxxx"
+    },
+    {
+      "name": "OCI_TENANCY_OCID",
+      "description": "テナンシーOCID",
+      "example": "ocid1.tenancy.oc1..xxxxx"
+    },
+    {
+      "name": "OCI_FINGERPRINT",
+      "description": "APIキーのフィンガープリント",
+      "example": "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+    },
+    {
+      "name": "OCI_PRIVATE_KEY",
+      "description": "APIプライベートキー（PEM形式、改行含む）",
+      "example": "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----"
+    },
+    {
+      "name": "OCI_REGION",
+      "description": "リージョン識別子",
+      "example": "ap-tokyo-1"
+    },
+    {
+      "name": "OCI_COMPARTMENT_ID",
+      "description": "コンパートメントOCID",
+      "example": "ocid1.compartment.oc1..xxxxx"
+    },
+    {
+      "name": "OCI_SUBNET_ID",
+      "description": "サブネットOCID",
+      "example": "ocid1.subnet.oc1.ap-tokyo-1.xxxxx"
+    },
+    {
+      "name": "OCI_IMAGE_ID",
+      "description": "OSイメージOCID",
+      "example": "ocid1.image.oc1.ap-tokyo-1.xxxxx"
+    },
+    {
+      "name": "OCI_AVAILABILITY_DOMAIN",
+      "description": "可用性ドメイン名",
+      "example": "xxxx:AP-TOKYO-1-AD-1"
+    },
+    {
+      "name": "OCI_SSH_PUBLIC_KEY",
+      "description": "SSH公開鍵（オプション）",
+      "example": "ssh-rsa AAAA... user@example.com"
+    },
+    {
+      "name": "DISCORD_WEBHOOK_URL",
+      "description": "Discord通知用Webhook URL（オプション）",
+      "example": "https://discord.com/api/webhooks/xxxxx/xxxxx"
+    },
+    {
+      "name": "SLACK_WEBHOOK_URL",
+      "description": "Slack通知用Webhook URL（オプション）",
+      "example": "https://hooks.slack.com/services/xxxxx/xxxxx/xxxxx"
+    }
+  ]
+}

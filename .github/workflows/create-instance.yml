@@ -1,0 +1,281 @@
+name: Oracle Cloud Instance Creator
+
+on:
+  schedule:
+    # 30分ごとに実行（UTC）
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      instance_size:
+        description: 'インスタンスサイズ'
+        required: false
+        default: 'AUTO'
+        type: choice
+        options:
+          - AUTO
+          - MAX
+          - MID
+          - MIN
+      force_run:
+        description: '成功フラグを無視して強制実行'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  # デフォルトのインスタンスサイズ（AUTO推奨）
+  INSTANCE_SIZE: ${{ github.event.inputs.instance_size || 'AUTO' }}
+
+jobs:
+  check-success-flag:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check if already succeeded
+        id: check
+        run: |
+          # 強制実行の場合はスキップ
+          if [ "${{ github.event.inputs.force_run }}" == "true" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "強制実行モードです"
+            exit 0
+          fi
+
+          # 成功フラグファイルをチェック
+          if [ -f ".instance-created" ]; then
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "インスタンスは既に作成済みです。終了します。"
+          else
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "インスタンス作成を試行します。"
+          fi
+
+  create-instance:
+    needs: check-success-flag
+    if: needs.check-success-flag.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup OCI CLI
+        run: |
+          # OCI CLIのインストール
+          curl -L -O https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
+          chmod +x install.sh
+          ./install.sh --accept-all-defaults
+
+          # PATHに追加
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Configure OCI CLI
+        run: |
+          mkdir -p ~/.oci
+
+          # 設定ファイルを作成
+          cat > ~/.oci/config << EOF
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ secrets.OCI_REGION }}
+          key_file=~/.oci/oci_api_key.pem
+          EOF
+
+          # 秘密鍵を保存
+          echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/config
+
+      - name: Verify OCI CLI configuration
+        run: |
+          export PATH="$HOME/bin:$PATH"
+          oci iam region list --output table 2>&1 || {
+            echo "::error::OCI CLIの設定に問題があります。Secretsを確認してください。"
+            exit 1
+          }
+
+      - name: Create Instance
+        id: create
+        env:
+          OCI_COMPARTMENT_ID: ${{ secrets.OCI_COMPARTMENT_ID }}
+          OCI_SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
+          OCI_IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
+          OCI_AVAILABILITY_DOMAIN: ${{ secrets.OCI_AVAILABILITY_DOMAIN }}
+          OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+          INSTANCE_SIZE: ${{ env.INSTANCE_SIZE }}
+        run: |
+          export PATH="$HOME/bin:$PATH"
+          chmod +x scripts/create_instance.sh
+
+          # スクリプト実行
+          if scripts/create_instance.sh; then
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -eq 2 ]; then
+              echo "result=out_of_capacity" >> $GITHUB_OUTPUT
+            else
+              echo "result=error" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Create success flag
+        if: steps.create.outputs.result == 'success'
+        run: |
+          # 成功フラグファイルを作成
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .instance-created
+
+          # 作成されたインスタンス情報を保存
+          if [ -f /tmp/instance_info.json ]; then
+            cp /tmp/instance_info.json ./instance_info.json
+          fi
+
+          # コミットしてプッシュ
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .instance-created instance_info.json 2>/dev/null || git add .instance-created
+          git commit -m "Instance created successfully at $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          git push
+
+      - name: Send Discord notification (Success)
+        if: steps.create.outputs.result == 'success' && secrets.DISCORD_WEBHOOK_URL != ''
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          INSTANCE_INFO=""
+          if [ -f /tmp/instance_info.json ]; then
+            INSTANCE_ID=$(cat /tmp/instance_info.json | jq -r '.data.id // "N/A"')
+            INSTANCE_NAME=$(cat /tmp/instance_info.json | jq -r '.data."display-name" // "N/A"')
+            PUBLIC_IP=$(cat /tmp/instance_public_ip.txt 2>/dev/null || echo "取得中...")
+            INSTANCE_INFO="**インスタンスID:** ${INSTANCE_ID}\n**インスタンス名:** ${INSTANCE_NAME}\n**パブリックIP:** ${PUBLIC_IP}"
+          fi
+
+          curl -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"Oracle Cloud インスタンス作成成功\",
+                \"description\": \"インスタンスが正常に作成されました。\n\n${INSTANCE_INFO}\",
+                \"color\": 5763719,
+                \"timestamp\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"
+              }]
+            }" \
+            "$DISCORD_WEBHOOK_URL"
+
+      - name: Send Slack notification (Success)
+        if: steps.create.outputs.result == 'success' && secrets.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{
+              "text": "Oracle Cloud インスタンス作成成功",
+              "attachments": [{
+                "color": "good",
+                "text": "インスタンスが正常に作成されました。詳細はGitHubリポジトリを確認してください。"
+              }]
+            }' \
+            "$SLACK_WEBHOOK_URL"
+
+      - name: Create GitHub Issue (Success)
+        if: steps.create.outputs.result == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let body = 'インスタンスが正常に作成されました。\n\n';
+            body += '## 作成日時\n';
+            body += new Date().toISOString() + '\n\n';
+            body += '## 次のステップ\n';
+            body += '1. Oracle Cloud Consoleでインスタンスを確認\n';
+            body += '2. SSHで接続してセットアップを完了\n';
+            body += '3. このリポジトリのワークフローを無効化（任意）\n';
+
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Oracle Cloud インスタンス作成成功',
+              body: body,
+              labels: ['success', 'instance-created']
+            });
+
+      - name: Log failure (Out of capacity)
+        if: steps.create.outputs.result == 'out_of_capacity'
+        run: |
+          echo "::warning::Out of capacity - 次回のスケジュール実行でリトライします"
+          echo "リージョン: ${{ secrets.OCI_REGION }}"
+          echo "次回実行予定: 約30分後"
+
+      - name: Send Discord notification (Out of capacity)
+        if: steps.create.outputs.result == 'out_of_capacity' && secrets.DISCORD_WEBHOOK_URL != '' && github.event_name == 'workflow_dispatch'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"Oracle Cloud インスタンス作成待機中\",
+                \"description\": \"キャパシティ不足のため待機中です。30分後に再試行します。\",
+                \"color\": 16776960,
+                \"timestamp\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ\")\"
+              }]
+            }" \
+            "$DISCORD_WEBHOOK_URL"
+
+      - name: Log error
+        if: steps.create.outputs.result == 'error'
+        run: |
+          echo "::error::インスタンス作成に失敗しました。ログを確認してください。"
+
+  # 複数リージョン対応ジョブ（オプション）
+  try-multiple-regions:
+    if: github.event.inputs.try_multiple_regions == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        region: [ap-tokyo-1, ap-osaka-1, ap-seoul-1, ap-singapore-1, ap-mumbai-1]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup OCI CLI
+        run: |
+          curl -L -O https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
+          chmod +x install.sh
+          ./install.sh --accept-all-defaults
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Configure OCI CLI for ${{ matrix.region }}
+        run: |
+          mkdir -p ~/.oci
+
+          cat > ~/.oci/config << EOF
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ matrix.region }}
+          key_file=~/.oci/oci_api_key.pem
+          EOF
+
+          echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/config
+
+      - name: Try creating instance in ${{ matrix.region }}
+        env:
+          OCI_COMPARTMENT_ID: ${{ secrets.OCI_COMPARTMENT_ID }}
+          OCI_REGION: ${{ matrix.region }}
+        run: |
+          export PATH="$HOME/bin:$PATH"
+          echo "リージョン ${{ matrix.region }} でインスタンス作成を試行中..."
+          # ここでリージョン固有のサブネットやイメージIDが必要な場合は
+          # 追加のSecrets設定が必要です
