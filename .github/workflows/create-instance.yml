@@ -22,6 +22,10 @@ on:
         default: false
         type: boolean
 
+concurrency:
+  group: oracle-instance-creator
+  cancel-in-progress: false
+
 env:
   # デフォルトのインスタンスサイズ（AUTO推奨）
   INSTANCE_SIZE: ${{ github.event.inputs.instance_size || 'AUTO' }}
